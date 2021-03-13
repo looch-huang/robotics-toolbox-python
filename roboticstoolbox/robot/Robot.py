@@ -225,7 +225,6 @@ class Robot(DynamicsMixin, IKMixin):
             else:  # pragma nocover
                 return str(theta * deg) + "\u00b0"
 
-        config = self.config()
         # show named configurations
         if len(self._configdict) > 0:
             table = ANSITable(
@@ -237,16 +236,118 @@ class Robot(DynamicsMixin, IKMixin):
 
             for name, q in self._configdict.items():
                 qlist = []
-                for i, c in enumerate(config):
+                for j, c in enumerate(self.structure):
                     if c == 'P':
-                        qlist.append(f"{q[i]: .3g}")
+                        qlist.append(f"{q[j]: .3g}")
                     else:
-                        qlist.append(angle(q[i], "{: .3g}"))
+                        qlist.append(angle(q[j], "{: .3g}"))
                 table.row(name, *qlist)
 
             return "\n" + str(table)
         else:  # pragma nocover
             return ""
+
+    @property
+    def structure(self):
+        """
+        Return the joint structure string
+
+        :return: joint configuration string
+        :rtype: str
+
+        A string with one letter per joint: ``R`` for a revolute
+        joint, and ``P`` for a prismatic joint.
+
+        Example:
+
+        .. runblock:: pycon
+
+            >>> import roboticstoolbox as rtb
+            >>> puma = rtb.models.DH.Puma560()
+            >>> puma.structure
+            >>> stanford = rtb.models.DH.Stanford()
+            >>> stanford.structure
+
+        .. note:: Fixed joints, that maintain a constant link relative pose,
+            are not included.  ``len(self.structure) == self.n``.
+        """
+        structure = []
+        for link in self:
+            if link.isrevolute:
+                structure.append('R')
+            elif link.isprismatic:
+                structure.append('P')
+
+        return ''.join(structure)
+
+    def todegrees(self, q=None):
+        """
+        Convert joint angles to degrees
+
+        :param q: The joint configuration of the robot (Optional,
+            if not supplied will use the stored q values)
+        :type q: ndarray(n)
+        :return: a vector of joint coordinates in degrees and metres
+        :rtype: ndarray(n)
+
+        ``robot.todegrees(q)`` converts joint coordinates ``q`` to degrees
+        taking into account whether elements of ``q`` correspond to revolute
+        or prismatic joints, ie. prismatic joint values are not converted.
+
+        ``robot.todegrees()`` as above except uses the stored q value of the
+        robot object.
+
+        Example:
+
+        .. runblock:: pycon
+
+            >>> import roboticstoolbox as rtb
+            >>> from math import pi
+            >>> stanford = rtb.models.DH.Stanford()
+            >>> stanford.todegrees([pi/4, pi/8, 2, -pi/4, pi/6, pi/3])
+        """
+
+        q = self._getq(q)
+        revolute = self.isrevolute()
+
+        return np.array([
+            q[k] * 180.0 / np.pi if
+            revolute[k] else q[k] for k in range(len(q))
+        ])
+
+    def toradians(self, q):
+        """
+        Convert joint angles to radians
+
+        :param q: The joint configuration of the robot (Optional,
+            if not supplied will use the stored q values)
+        :type q: ndarray(n)
+        :return: a vector of joint coordinates in radians and metres
+        :rtype: ndarray(n)
+
+        ``robot.toradians(q)`` converts joint coordinates ``q`` to radians
+        taking into account whether elements of ``q`` correspond to revolute
+        or prismatic joints, ie. prismatic joint values are not converted.
+
+        ``robot.toradians()`` as above except uses the stored q value of the
+        robot object.
+
+        Example:
+
+        .. runblock:: pycon
+
+            >>> import roboticstoolbox as rtb
+            >>> stanford = rtb.models.DH.Stanford()
+            >>> stanford.toradians([10, 20, 2, 30, 40, 50])
+        """
+
+        q = self._getq(q)
+        revolute = self.isrevolute()
+
+        return np.array([
+            q[k] * np.pi / 180.0
+            if revolute[k] else q[k] for k in range(len(q))
+        ])
 
     def linkcolormap(self, linkcolors="viridis"):
         """
@@ -993,10 +1094,11 @@ class Robot(DynamicsMixin, IKMixin):
             raise NotImplementedError(
                 "ERobot fellipse not implemented yet")
 
+        q = getunit(q, unit)
         ell = EllipsePlot(self, q, 'f', opt, centre=centre)
         return ell
 
-    def vellipse(self, q=None, opt='trans', centre=[0, 0, 0]):
+    def vellipse(self, q=None, opt='trans', unit='rad', centre=[0, 0, 0], scale=0.1):
         """
         Create a velocity ellipsoid object for plotting with PyPlot
 
@@ -1031,7 +1133,8 @@ class Robot(DynamicsMixin, IKMixin):
             raise NotImplementedError(
                 "ERobot vellipse not implemented yet")
 
-        ell = EllipsePlot(self, q, 'v', opt, centre=centre)
+        q = getunit(q, unit)
+        ell = EllipsePlot(self, q, 'v', opt, centre=centre, scale=scale)
         return ell
 
     def plot_ellipse(
@@ -1301,7 +1404,7 @@ class Robot(DynamicsMixin, IKMixin):
                 "2D Plotting of ERobot's not implemented yet")
 
         # Make an empty 2D figure
-        env = PyPlot2()
+        env = self._get_graphical_backend('pyplot2')
 
         q = getmatrix(q, (None, self.n))
 
@@ -1413,7 +1516,7 @@ class Robot(DynamicsMixin, IKMixin):
 
     def teach2(
             self, q=None, block=True, limits=None,
-            eeframe=True, name=False):
+            vellipse=False, fellipse=False, eeframe=True, name=False, backend='pyplot2'):
         '''
         2D Graphical teach pendant
 
@@ -1423,8 +1526,14 @@ class Robot(DynamicsMixin, IKMixin):
             if not supplied will use the stored q values).
         :type q: float ndarray(n)
         :param limits: Custom view limits for the plot. If not supplied will
-            autoscale, [x1, x2, y1, y2, z1, z2]
-        :type limits: ndarray(6)
+            autoscale, [x1, x2, y1, y2]
+        :type limits: array_like(4)
+        :param vellipse: (Plot Option) Plot the velocity ellipse at the
+            end-effector
+        :type vellipse: bool
+        :param vellipse: (Plot Option) Plot the force ellipse at the
+            end-effector
+        :type vellipse: bool
         :param eeframe: (Plot Option) Plot the end-effector coordinate frame
             at the location of the end-effector. Uses three arrows, red,
             green and blue to indicate the x, y, and z-axes.
@@ -1478,6 +1587,19 @@ class Robot(DynamicsMixin, IKMixin):
             eeframe=eeframe, name=name)
 
         env._add_teach_panel(self)
+
+        if limits is None:
+            limits = np.r_[-1, 1, -1, 1] * self.reach * 1.5
+            env.ax.set_xlim([limits[0], limits[1]])
+            env.ax.set_ylim([limits[2], limits[3]])
+
+        if vellipse:
+            vell = self.vellipse(centre='ee', scale=0.5)
+            env.add(vell)
+
+        if fellipse:
+            fell = self.fellipse(centre='ee')
+            env.add(fell)
 
         # Keep the plot open
         if block:           # pragma: no cover

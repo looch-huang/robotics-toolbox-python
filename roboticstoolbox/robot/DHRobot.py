@@ -118,7 +118,15 @@ class DHRobot(Robot):
         :return: Pretty print of the robot model
         :rtype: str
         """
-        s = ""
+        if self.mdh:
+            dh = "modified"
+        else:
+            dh = "standard"
+        if self.manufacturer is None:
+            manuf = ""
+        else:
+            manuf = f" (by {self.manufacturer})"
+        s = f"{self.name}{manuf}: {self.n} axes ({self.structure}), {dh} DH parameters\n"
         deg = 180 / np.pi
 
         def qstr(j, link):
@@ -203,7 +211,7 @@ class DHRobot(Robot):
                 else:
                     table.row(qstr(j, L), L.d, L.a, angle(L.alpha), *ql)
 
-        s = str(table)
+        s += str(table)
 
         # show tool and base
         if self._tool is not None or self._tool is not None:
@@ -637,97 +645,6 @@ class DHRobot(Robot):
             p.append(self.links[i].isrevolute)
 
         return p
-
-    def config(self):
-        """
-        Return the joint configuration string
-
-        :return: joint configuration string
-        :rtype: str
-
-        A string with one letter per joint: ``R`` for a revolute
-        joint, and ``P`` for a prismatic joint.
-
-        Example:
-
-        .. runblock:: pycon
-
-            >>> import roboticstoolbox as rtb
-            >>> puma = rtb.models.DH.Puma560()
-            >>> puma.config()
-            >>> stanford = rtb.models.DH.Stanford()
-            >>> stanford.config()
-        """
-        return ''.join(['R' if L.isrevolute else 'P' for L in self])
-
-    def todegrees(self, q=None):
-        """
-        Convert joint angles to degrees
-
-        :param q: The joint configuration of the robot (Optional,
-            if not supplied will use the stored q values)
-        :type q: ndarray(n)
-        :return: a vector of joint coordinates in degrees and metres
-        :rtype: ndarray(n)
-
-        ``robot.todegrees(q)`` converts joint coordinates ``q`` to degrees
-        taking into account whether elements of ``q`` correspond to revolute
-        or prismatic joints, ie. prismatic joint values are not converted.
-
-        ``robot.todegrees()`` as above except uses the stored q value of the
-        robot object.
-
-        Example:
-
-        .. runblock:: pycon
-
-            >>> import roboticstoolbox as rtb
-            >>> from math import pi
-            >>> stanford = rtb.models.DH.Stanford()
-            >>> stanford.todegrees([pi/4, pi/8, 2, -pi/4, pi/6, pi/3])
-        """
-
-        q = self._getq(q)
-        revolute = self.isrevolute()
-
-        return np.array([
-            q[k] * 180.0 / np.pi if
-            revolute[k] else q[k] for k in range(len(q))
-        ])
-
-    def toradians(self, q):
-        """
-        Convert joint angles to radians
-
-        :param q: The joint configuration of the robot (Optional,
-            if not supplied will use the stored q values)
-        :type q: ndarray(n)
-        :return: a vector of joint coordinates in radians and metres
-        :rtype: ndarray(n)
-
-        ``robot.toradians(q)`` converts joint coordinates ``q`` to radians
-        taking into account whether elements of ``q`` correspond to revolute
-        or prismatic joints, ie. prismatic joint values are not converted.
-
-        ``robot.toradians()`` as above except uses the stored q value of the
-        robot object.
-
-        Example:
-
-        .. runblock:: pycon
-
-            >>> import roboticstoolbox as rtb
-            >>> stanford = rtb.models.DH.Stanford()
-            >>> stanford.toradians([10, 20, 2, 30, 40, 50])
-        """
-
-        q = self._getq(q)
-        revolute = self.isrevolute()
-
-        return np.array([
-            q[k] * np.pi / 180.0
-            if revolute[k] else q[k] for k in range(len(q))
-        ])
 
     def dhunique(self):
         """
@@ -1798,6 +1715,7 @@ if __name__ == "__main__":   # pragma nocover
     # print(planar)
 
     puma = rtb.models.DH.Puma560()
+    print(puma)
     print(puma.jacob0(puma.qn, analytical='eul'))
     # puma.base = None
     # print('base', puma.base)

@@ -855,7 +855,7 @@ graph [rankdir=LR];
         file.write('}\n')
 
         if isinstance(filename, str):
-            close(file)  # noqa
+            file.close()  # noqa
 
 # --------------------------------------------------------------------- #
 
@@ -1690,7 +1690,13 @@ graph [rankdir=LR];
                 link._joint_name if link.parent is not None else "",
                 ets.__str__(f"q{link._jindex}"))
 
-        s = str(table)
+        if self.manufacturer is None:
+            manuf = ""
+        else:
+            manuf = f" (by {self.manufacturer})"
+        s = f"{self.name}{manuf}: {self.n} axes ({self.structure}), ETS model\n"
+
+        s += str(table)
         s += self.configurations_str()
 
         return s
@@ -1957,7 +1963,7 @@ if __name__ == "__main__":  # pragma nocover
     import roboticstoolbox as rtb
     np.set_printoptions(precision=4, suppress=True)
 
-    p = rtb.models.ETS.Puma560()
+    p = rtb.models.URDF.Puma560()
     p.fkine(p.qz)
     p.jacob0(p.qz)
     p.jacobe(p.qz)
